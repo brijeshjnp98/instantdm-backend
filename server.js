@@ -207,16 +207,20 @@ app.get("/auth/callback", async (req, res) => {
     const longToken = longRes.data.access_token;
     console.log("✅ Long-lived token received");
 
-    // Step 3: Fetch real profile
+    // Step 3: Fetch profile — try /me first, fallback gracefully
     console.log("🔄 Fetching profile...");
-    const profileRes = await axios.get(
-      `https://graph.instagram.com/v21.0/${igUserId}` +
-      `?fields=id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url,account_type` +
-      `&access_token=${longToken}`
-    );
-
-    const profile = profileRes.data;
-    console.log(`✅ Profile fetched: @${profile.username}`);
+    let profile = { id: igUserId, username: "user_"+igUserId, name: "", biography: "", followers_count: 0, follows_count: 0, media_count: 0, profile_picture_url: "", account_type: "BUSINESS" };
+    try {
+      const meRes = await axios.get(
+        `https://graph.instagram.com/v21.0/me` +
+        `?fields=id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url,account_type` +
+        `&access_token=${longToken}`
+      );
+      profile = { ...profile, ...meRes.data };
+      console.log(`✅ Profile fetched: @${profile.username}`);
+    } catch(pErr) {
+      console.log("⚠️ Profile fetch failed, using basic info. Error:", pErr.response?.data?.error?.message || pErr.message);
+    }
 
     // Step 4: Save to PostgreSQL
     await saveUser({
