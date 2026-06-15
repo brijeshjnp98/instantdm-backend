@@ -145,29 +145,57 @@ app.get("/auth/instagram", (req, res) => {
   res.redirect(authUrl);
 });
 app.get("/auth/callback", async (req, res) => {
-  const { code, error } = req.query;
-  if (error) return res.redirect(`${FRONTEND_URL}?error=${error}`);
+  const { code: rawCode, error } = req.query;
+  if (error) {
+    console.error("[OAuth] Error from Instagram:", error);
+    return res.redirect(`${FRONTEND_URL}?error=${error}`);
+  }
+  if (!rawCode) return res.redirect(`${FRONTEND_URL}?error=no_code`);
+
+  // Instagram sometimes appends '#_' — strip it
+  const code = rawCode.split('#')[0];
+  console.log("[OAuth] Code received:", code.substring(0,15)+"...");
+
   try {
-    const tokenRes = await axios.post("https://api.instagram.com/oauth/access_token",
-      new URLSearchParams({ client_id:IG_APP_ID, client_secret:IG_APP_SECRET, grant_type:"authorization_code", redirect_uri:REDIRECT_URI, code }),
-      { headers: {"Content-Type":"application/x-www-form-urlencoded"} }
+    // Use plain string body — most reliable for Instagram API
+    const formBody = [
+      `client_id=${encodeURIComponent(IG_APP_ID)}`,
+      `client_secret=${encodeURIComponent(IG_APP_SECRET)}`,
+      `grant_type=authorization_code`,
+      `redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
+      `code=${encodeURIComponent(code)}`
+    ].join('&');
+
+    console.log("[OAuth] Exchanging code for short-lived token...");
+    const tokenRes = await axios.post(
+      "https://api.instagram.com/oauth/access_token",
+      formBody,
+      { headers: { "Content-Type": "application/x-www-form-urlencoded" } }
     );
-    const { access_token:shortToken, user_id:igUserId } = tokenRes.data;
-    console.log("[OAuth Callback] Exchanging shortToken for long-lived token...");
-    const longRes = await axios.get(`https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${shortToken}`);
+    const { access_token: shortToken, user_id: igUserId } = tokenRes.data;
+    console.log("[OAuth] Short token OK, user:", igUserId);
+
+    // Exchange for long-lived token (Instagram endpoint)
+    const longRes = await axios.get(
+      `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${IG_APP_SECRET}&access_token=${shortToken}`
+    );
     const longToken = longRes.data.access_token;
-    console.log("[OAuth Callback] Long-lived token response status:", longRes.status);
+    console.log("[OAuth] Long-lived token obtained");
+
     let profile = { id:igUserId, username:"user_"+igUserId, name:"", biography:"", followers_count:0, follows_count:0, media_count:0, profile_picture_url:"", account_type:"BUSINESS" };
     try {
       const pRes = await axios.get(`https://graph.instagram.com/v21.0/me?fields=id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url,account_type&access_token=${longToken}`);
       profile = { ...profile, ...pRes.data };
-    } catch(e) { console.log("⚠️ Profile fetch partial:", e.message); }
+      console.log("[OAuth] Profile: @"+profile.username);
+    } catch(e) { console.log("⚠️ Profile partial:", e.response?.data||e.message); }
+
     await saveUser({ igUserId:String(igUserId), username:profile.username, name:profile.name||profile.username, bio:profile.biography||"", followers:profile.followers_count||0, following:profile.follows_count||0, posts:profile.media_count||0, profilePic:profile.profile_picture_url||"", accountType:profile.account_type||"BUSINESS", accessToken:longToken });
-    console.log(`✅ Connected: @${profile.username}`);
-    res.redirect(`${FRONTEND_URL}?connected=true&userId=${igUserId}&username=${profile.username}&followers=${profile.followers_count||0}`);
+    console.log(`✅ Connected: @${profile.username} (${igUserId})`);
+    res.redirect(`${FRONTEND_URL}?connected=true&userId=${igUserId}&username=${encodeURIComponent(profile.username)}&followers=${profile.followers_count||0}`);
   } catch(err) {
-    console.error("❌ OAuth Error:", err.response?.data || err.message);
-    res.redirect(`${FRONTEND_URL}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(err.response?.data||{}))}`);
+    const errData = err.response?.data || {};
+    console.error("❌ OAuth Error:", JSON.stringify(errData), err.message);
+    res.redirect(`${FRONTEND_URL}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(errData))}`);
   }
 });
 
