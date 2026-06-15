@@ -140,9 +140,10 @@ app.get("/", (req, res) => res.json({
 // ─── OAUTH ────────────────────────────────────────────────────────────────────
 app.get("/auth/instagram", (req, res) => {
   const scopes = ["instagram_business_basic","instagram_business_manage_messages","instagram_business_manage_comments","instagram_business_content_publish"].join(",");
-  res.redirect(`https://www.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&response_type=code`);
+  const authUrl = `https://www.instagram.com/oauth/authorize?client_id=${IG_APP_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&scope=${scopes}&response_type=code&enable_fb_login=0&force_authentication=0`;
+  console.log("[OAuth] Redirecting to:", authUrl);
+  res.redirect(authUrl);
 });
-
 app.get("/auth/callback", async (req, res) => {
   const { code, error } = req.query;
   if (error) return res.redirect(`${FRONTEND_URL}?error=${error}`);
@@ -152,8 +153,10 @@ app.get("/auth/callback", async (req, res) => {
       { headers: {"Content-Type":"application/x-www-form-urlencoded"} }
     );
     const { access_token:shortToken, user_id:igUserId } = tokenRes.data;
-    const longRes = await axios.get(`https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${IG_APP_SECRET}&access_token=${shortToken}`);
+    console.log("[OAuth Callback] Exchanging shortToken for long-lived token...");
+    const longRes = await axios.get(`https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${IG_APP_ID}&client_secret=${IG_APP_SECRET}&fb_exchange_token=${shortToken}`);
     const longToken = longRes.data.access_token;
+    console.log("[OAuth Callback] Long-lived token response status:", longRes.status);
     let profile = { id:igUserId, username:"user_"+igUserId, name:"", biography:"", followers_count:0, follows_count:0, media_count:0, profile_picture_url:"", account_type:"BUSINESS" };
     try {
       const pRes = await axios.get(`https://graph.instagram.com/v21.0/me?fields=id,username,name,biography,followers_count,follows_count,media_count,profile_picture_url,account_type&access_token=${longToken}`);
