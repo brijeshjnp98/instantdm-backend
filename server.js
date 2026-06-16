@@ -148,9 +148,13 @@ app.get("/auth/callback", async (req, res) => {
   const { code: rawCode, error } = req.query;
   if (error) {
     console.error("[OAuth] Error from Instagram:", error);
-    return res.redirect(`${FRONTEND_URL}?error=${error}`);
+    const errLink = `${FRONTEND_URL}?error=${error}`;
+    return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantDM</title></head><body><script>window.location.href="${errLink}";<\/script><a href="${errLink}">Back to App</a></body></html>`);
   }
-  if (!rawCode) return res.redirect(`${FRONTEND_URL}?error=no_code`);
+  if (!rawCode) {
+    const errLink = `${FRONTEND_URL}?error=no_code`;
+    return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantDM</title></head><body><script>window.location.href="${errLink}";<\/script><a href="${errLink}">Back to App</a></body></html>`);
+  }
 
   // Instagram sometimes appends '#_' — strip it
   const code = rawCode.split('#')[0];
@@ -191,11 +195,91 @@ app.get("/auth/callback", async (req, res) => {
 
     await saveUser({ igUserId:String(igUserId), username:profile.username, name:profile.name||profile.username, bio:profile.biography||"", followers:profile.followers_count||0, following:profile.follows_count||0, posts:profile.media_count||0, profilePic:profile.profile_picture_url||"", accountType:profile.account_type||"BUSINESS", accessToken:longToken });
     console.log(`✅ Connected: @${profile.username} (${igUserId})`);
-    res.redirect(`${FRONTEND_URL}?connected=true&userId=${igUserId}&username=${encodeURIComponent(profile.username)}&followers=${profile.followers_count||0}`);
+
+    // Build deep link URL
+    const deepLink = `${FRONTEND_URL}?connected=true&userId=${igUserId}&username=${encodeURIComponent(profile.username)}&followers=${profile.followers_count||0}`;
+
+    // Return HTML page that opens the app via JS (Chrome blocks direct res.redirect to custom schemes)
+    return res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InstantDM — Opening App...</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: linear-gradient(135deg, #FF6B35, #FF8E53);
+           min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: white; border-radius: 24px; padding: 40px 32px; text-align: center;
+            max-width: 340px; width: 90%; box-shadow: 0 20px 60px rgba(0,0,0,0.15); }
+    .icon { font-size: 56px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 800; color: #1a1a2e; margin-bottom: 8px; }
+    p { font-size: 14px; color: #666; line-height: 1.6; margin-bottom: 24px; }
+    .btn { display: block; background: linear-gradient(135deg, #FF6B35, #FF8E53);
+           color: white; text-decoration: none; padding: 16px 24px; border-radius: 14px;
+           font-weight: 800; font-size: 16px; margin-bottom: 12px; }
+    .small { font-size: 11px; color: #999; margin-top: 16px; }
+    .check { color: #059669; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">✅</div>
+    <h1>Connected!</h1>
+    <p class="check">@${profile.username} connected successfully</p>
+    <p>Tap the button below to open InstantDM app</p>
+    <a class="btn" href="${deepLink}" id="openBtn">📱 Open InstantDM App</a>
+    <p class="small">This page will close automatically</p>
+  </div>
+  <script>
+    // Auto-open the app
+    window.location.href = "${deepLink}";
+    // Fallback: try again after 1s
+    setTimeout(function() {
+      document.getElementById('openBtn').click();
+    }, 1000);
+  </script>
+</body>
+</html>`);
+
   } catch(err) {
     const errData = err.response?.data || {};
     console.error("❌ OAuth Error:", JSON.stringify(errData), err.message);
-    res.redirect(`${FRONTEND_URL}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(errData))}`);
+
+    const errLink = `${FRONTEND_URL}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(errData))}`;
+    return res.send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>InstantDM — Error</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+           background: linear-gradient(135deg, #ef4444, #dc2626);
+           min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .card { background: white; border-radius: 24px; padding: 40px 32px; text-align: center;
+            max-width: 340px; width: 90%; }
+    .icon { font-size: 56px; margin-bottom: 16px; }
+    h1 { font-size: 22px; font-weight: 800; color: #1a1a2e; margin-bottom: 8px; }
+    p { font-size: 13px; color: #666; margin-bottom: 20px; }
+    .btn { display: block; background: #ef4444; color: white; text-decoration: none;
+           padding: 16px; border-radius: 14px; font-weight: 800; font-size: 15px; }
+    .err { font-size: 11px; color: #999; margin-top: 12px; word-break: break-all; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">❌</div>
+    <h1>Connection Failed</h1>
+    <p>Something went wrong. Tap below to go back to the app.</p>
+    <a class="btn" href="${errLink}">← Back to InstantDM</a>
+    <p class="err">${JSON.stringify(errData).substring(0,120)}</p>
+  </div>
+  <script>window.location.href = "${errLink}";</script>
+</body>
+</html>`);
   }
 });
 
