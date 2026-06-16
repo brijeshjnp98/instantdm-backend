@@ -14,7 +14,7 @@ app.use(express.urlencoded({ extended: true }));
 const IG_APP_ID      = process.env.IG_APP_ID      || "981987564633538";
 const IG_APP_SECRET  = process.env.IG_APP_SECRET  || "b67f98897773f981fdcd8bedfffdf4f1";
 const REDIRECT_URI   = process.env.REDIRECT_URI   || "https://instantdm-backend.onrender.com/auth/callback";
-const FRONTEND_URL   = process.env.FRONTEND_URL   || "https://instantdm-backend.onrender.com";
+const FRONTEND_URL   = process.env.FRONTEND_URL   || "instantdm://callback";
 const WEBHOOK_VERIFY = process.env.WEBHOOK_VERIFY || "instantdm_webhook_secret_123";
 const DATABASE_URL   = process.env.DATABASE_URL   || "";
 
