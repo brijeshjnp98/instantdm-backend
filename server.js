@@ -14,9 +14,12 @@ app.use(express.urlencoded({ extended: true }));
 const IG_APP_ID      = process.env.IG_APP_ID      || "981987564633538";
 const IG_APP_SECRET  = process.env.IG_APP_SECRET  || "b67f98897773f981fdcd8bedfffdf4f1";
 const REDIRECT_URI   = process.env.REDIRECT_URI   || "https://instantdm-backend.onrender.com/auth/callback";
-const FRONTEND_URL   = process.env.FRONTEND_URL   || "instantdm://callback";
+const FRONTEND_URL   = process.env.FRONTEND_URL   || "https://instantdm-backend.onrender.com";
 const WEBHOOK_VERIFY = process.env.WEBHOOK_VERIFY || "instantdm_webhook_secret_123";
 const DATABASE_URL   = process.env.DATABASE_URL   || "";
+
+// Flutter deep link — ALWAYS fixed to custom scheme (never use FRONTEND_URL for app redirects)
+const APP_DEEP_LINK  = "instantdm://callback";
 
 // ─── DATABASE ─────────────────────────────────────────────────────────────────
 const pool = new Pool({ connectionString: DATABASE_URL, ssl: { rejectUnauthorized: false } });
@@ -148,11 +151,11 @@ app.get("/auth/callback", async (req, res) => {
   const { code: rawCode, error } = req.query;
   if (error) {
     console.error("[OAuth] Error from Instagram:", error);
-    const errLink = `${FRONTEND_URL}?error=${error}`;
+    const errLink = `${APP_DEEP_LINK}?error=${error}`;
     return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantDM</title></head><body><script>window.location.href="${errLink}";<\/script><a href="${errLink}">Back to App</a></body></html>`);
   }
   if (!rawCode) {
-    const errLink = `${FRONTEND_URL}?error=no_code`;
+    const errLink = `${APP_DEEP_LINK}?error=no_code`;
     return res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>InstantDM</title></head><body><script>window.location.href="${errLink}";<\/script><a href="${errLink}">Back to App</a></body></html>`);
   }
 
@@ -197,7 +200,7 @@ app.get("/auth/callback", async (req, res) => {
     console.log(`✅ Connected: @${profile.username} (${igUserId})`);
 
     // Build deep link URL
-    const deepLink = `${FRONTEND_URL}?connected=true&userId=${igUserId}&username=${encodeURIComponent(profile.username)}&followers=${profile.followers_count||0}`;
+    const deepLink = `${APP_DEEP_LINK}?connected=true&userId=${igUserId}&username=${encodeURIComponent(profile.username)}&followers=${profile.followers_count||0}`;
 
     // Return HTML page that opens the app via JS (Chrome blocks direct res.redirect to custom schemes)
     return res.send(`<!DOCTYPE html>
@@ -247,7 +250,7 @@ app.get("/auth/callback", async (req, res) => {
     const errData = err.response?.data || {};
     console.error("❌ OAuth Error:", JSON.stringify(errData), err.message);
 
-    const errLink = `${FRONTEND_URL}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(errData))}`;
+    const errLink = `${APP_DEEP_LINK}?error=oauth_failed&details=${encodeURIComponent(JSON.stringify(errData))}`;
     return res.send(`<!DOCTYPE html>
 <html>
 <head>
