@@ -310,7 +310,15 @@ app.get("/api/media/:userId", async (req, res) => {
     if (!user) return res.status(404).json({ error:"User not found" });
     const r = await axios.get(`https://graph.instagram.com/v21.0/${user.ig_user_id}/media?fields=id,caption,media_type,thumbnail_url,media_url,timestamp,like_count,comments_count,permalink&access_token=${user.access_token}`);
     res.json(r.data);
-  } catch(err) { res.status(500).json({ error:err.response?.data||err.message }); }
+  } catch(err) {
+    const igErr = err.response?.data?.error;
+    console.error("❌ Media fetch error:", JSON.stringify(igErr || err.message));
+    // Token expired → Flutter already handles this with _TokenExpiredBanner
+    if (igErr?.code === 190 || igErr?.type === 'OAuthException') {
+      return res.status(400).json({ error: 'token_expired' });
+    }
+    res.status(500).json({ error: igErr?.message || err.message });
+  }
 });
 
 // ─── CAMPAIGNS CRUD ───────────────────────────────────────────────────────────
