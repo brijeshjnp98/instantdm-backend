@@ -317,6 +317,10 @@ app.get("/api/media/:userId", async (req, res) => {
     if (igErr?.code === 190 || igErr?.type === 'OAuthException') {
       return res.status(400).json({ error: 'token_expired' });
     }
+    // Account type issue (code 100, subcode 33) → Personal account or permission issue
+    if (igErr?.code === 100) {
+      return res.status(400).json({ error: 'permission_denied', message: 'Your Instagram account may not support viewing media. Ensure you have a Business/Creator account and reconnect.' });
+    }
     res.status(500).json({ error: igErr?.message || err.message });
   }
 });
